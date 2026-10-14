@@ -1,0 +1,7 @@
+[workspace]
+members = ["dotwise_core", "dotwise_video", "dotwise_cli", "dotwise_gui"]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = true

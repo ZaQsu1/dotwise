@@ -1,0 +1,13 @@
+[package]
+name = "dotwise_cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "dotwise"
+path = "src/main.rs"
+
+[dependencies]
+dotwise_core = { path = "../dotwise_core" }
+dotwise_video = { path = "../dotwise_video" }
+image = { version = "=0.24.9", default-features = false, features = ["png", "jpeg"] }

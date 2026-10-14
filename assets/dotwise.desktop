@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Dotwise
+Comment=Image and video dithering
+Exec=dotwise_gui %f
+Icon=dotwise
+Terminal=false
+StartupWMClass=dotwise
+Categories=Graphics;
+MimeType=image/png;image/jpeg;video/mp4;
