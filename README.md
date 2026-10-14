@@ -136,6 +136,8 @@ Dotwise is under active development. Some features and edge cases may not yet be
 
 Bug reports, feature suggestions, and contributions are welcome. When reporting an issue, include your operating system, the steps to reproduce it, and a sample image or pipeline JSON when possible.
 
+## AI was used in this project
+
 ## License
 
 Dotwise is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
