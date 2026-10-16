@@ -1,143 +1,114 @@
-<div align="center">
+# Dotwise
 
-  <img src="assets/dotwise-baner.png" alt="Dotwise banner" width="50%">
+![Dotwise](assets/dotwise-baner.png)
 
-  # dotwise
+A Rust-powered image dithering and effects editor with a React + Tauri desktop interface, command-line tools, batch processing, and video support.
 
-  **A flexible image dithering app for pixel textures, print-inspired graphics, and experimental visuals.**
+## Showcase
 
-</div>
-
----
-
-Dotwise is a dithering application built in Rust. It combines a desktop GUI with a command-line interface, an ordered effects pipeline, and support for processing images, folders, and video.
-
-Create a look with a built-in preset, then refine it by stacking and adjusting effects. Pipelines can be saved as JSON and reused from the GUI or CLI.
+![Dotwise desktop application](assets/showcase.png)
 
 ## Features
 
-* **Multiple dithering methods:** error diffusion, Bayer ordered dithering, halftone, line patterns, white noise, gradient noise, and blue noise.
-* **Flexible palettes:** monochrome, grayscale, duotone, CGA, Game Boy inspired green, custom colours, and palettes extracted from an image.
-* **Layer based pipeline:** combine dithering with effects such as downscaling, upscaling, posterization, gradient mapping, sharpening, scanlines, glow, row shifts, chromatic aberration, and JPEG style glitches.
-* **Live desktop preview:** inspect results, zoom and pan, compare the original with the result, and undo or redo changes.
-* **Presets:** start with one of the included styles, including Classic mono, Compact Mac, Handheld green, Newsprint, Duotone, Blue noise, and Glow glitch.
-* **Batch processing:** apply a preset or JSON pipeline to a folder of images.
-* **Video processing:** preview and export supported video formats, with optional animated noise and temporal hold.
-* **Reusable pipelines:** save and load processing settings as JSON.
-* **Export options:** images can be exported as PNG, JPEG, or SVG. Video export supports MP4, MOV, MKV, and WebM.
+- Error-diffusion, Bayer, halftone, line, white-noise, gradient-noise, and blue-noise dithering
+- Built-in, grayscale, duotone, CGA, Game Boy, custom, and image-extracted palettes
+- A stackable pipeline with adjustments, blur, scaling, glow, scanlines, grain, glitches, posterization, gradient maps, and sharpening
+- Live preview, zoom and pan, original/result comparison, layer controls, and undo/redo
+- Built-in presets and reusable JSON pipelines
+- PNG, JPEG, and SVG image export
+- Batch processing of PNG and JPEG folders
+- Video preview and export, including animated noise and temporal hold
 
-## Project components
+## Requirements
 
-| Component | Description |
-| --- | --- |
-| `dotwise_core` | Dithering algorithms, palettes, effects, presets, and pipeline processing |
-| `dotwise_video` | Video frame processing and export helpers |
-| `dotwise_gui` | Desktop application built with `egui` and `eframe` |
-| `dotwise_cli` | Command line interface for images, video, and batch jobs |
+- A current stable Rust toolchain and Cargo
+- Node.js 20 or newer and npm for the React/Tauri desktop app
+- `ffmpeg` and `ffprobe` on `PATH` for video import and export
+- On Windows, the Microsoft Edge WebView2 Runtime. The Inno Setup installer in `instalator/` includes Microsoft's signed bootstrapper and runs it only if the runtime is missing.
+- On Linux, the system WebKitGTK 4.1 development/runtime packages and the usual Tauri build dependencies. For Debian/Ubuntu:
 
-## Getting started
+  ```sh
+  sudo apt install build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
+  ```
 
-### Requirements
+The Linux WebView uses WebKitGTK; it does not require Microsoft Edge. Package names vary by distribution.
 
-* A recent stable Rust toolchain with Cargo.
-* Rust 1.85 or newer is recommended for the workspace's dependency and edition requirements.
-* `ffmpeg` and `ffprobe` on `PATH` for video processing.
+## Desktop app
 
-### Build and run
+Install JavaScript dependencies and start the development app:
 
-Clone the repository, then run the desktop application:
-
-```bash
-cargo run --release -p dotwise_gui
+```sh
+npm ci
+npm run tauri dev
 ```
 
-Open an image directly by passing its path:
+Create a self-contained release build with the frontend embedded in the app:
 
-```bash
-cargo run --release -p dotwise_gui -- ./image.png
+```sh
+npm run tauri build
 ```
 
-List available presets:
+On Windows, build the NSIS installer with:
 
-```bash
-cargo run --release -p dotwise_cli -- --list
+```powershell
+npm run tauri build -- --bundles nsis
 ```
 
-Build the GUI and CLI binaries:
+The release executable is written to `target/release/`. Tauri bundles are written below `target/release/bundle/`.
 
-```bash
-cargo build --release -p dotwise_gui -p dotwise_cli
+To create the additional Inno Setup installer, first build the release executable, then compile `instalator/Dotwise.iss` with Inno Setup 6. The script writes `instalator/Dotwise-Setup-0.1.0-x64.exe` and expects `instalator/WebView2Bootstrapper.exe` alongside it.
+
+## Command line
+
+Build the CLI:
+
+```sh
+cargo build --release -p dotwise_cli
 ```
 
-The resulting binaries are placed in `target/release`.
+Process an image with a built-in preset. The output extension selects PNG, JPEG, or SVG:
 
-## Command line usage
-
-### Process an image
-
-```bash
-dotwise input.png output.png --preset "Classic mono"
+```sh
+cargo run --release -p dotwise_cli -- input.png output.png --preset "Classic mono"
+cargo run --release -p dotwise_cli -- input.png output.svg --preset "Newsprint"
 ```
 
-The output extension determines the image format. SVG output is also supported:
+Dump a preset to JSON, edit it, and use it as a pipeline:
 
-```bash
-dotwise input.png output.svg --preset "Newsprint"
+```sh
+cargo run --release -p dotwise_cli -- --dump "Duotone" > duotone.json
+cargo run --release -p dotwise_cli -- input.png output.png --pipeline duotone.json
 ```
 
-### Use a custom pipeline
+Batch process a folder:
 
-Dump a built in preset to JSON, edit it, and use it for processing:
-
-```bash
-dotwise --dump "Duotone" > duotone.json
-dotwise input.png output.png --pipeline duotone.json
+```sh
+cargo run --release -p dotwise_cli -- batch ./input ./output --preset "Handheld green"
 ```
 
-### Batch process a folder
+Process a video (requires `ffmpeg` and `ffprobe`):
 
-```bash
-dotwise batch ./input ./output --preset "Handheld green"
+```sh
+cargo run --release -p dotwise_cli -- video input.mp4 output.mp4 --preset "Blue noise"
 ```
 
-Batch mode supports PNG and JPEG input files.
+For all CLI options:
 
-### Process video
-
-```bash
-dotwise video input.mp4 output.mp4 --preset "Blue noise"
+```sh
+cargo run --release -p dotwise_cli -- --help
 ```
 
-Some additional options are available for video processing:
+## Development
 
-```bash
-dotwise video input.mp4 output.mp4 --preset "Classic mono" --fps 24 --max-frames 500
+Run the Rust workspace tests and build the frontend:
+
+```sh
+cargo test --workspace
+npm run build
 ```
 
-For the full list of options:
-
-```bash
-dotwise --help
-dotwise video --help
-dotwise batch --help
-```
-
-## How the pipeline works
-
-A pipeline is an ordered sequence of processing steps. Each step operates on the result produced by the preceding step, and individual layers can be enabled or disabled. This makes it possible to combine resizing, colour adjustments, dithering, and finishing effects in one reusable setup.
-
-The desktop preview is scaled down when the longest image dimension exceeds 2048 pixels. Export uses the full resolution of the source image.
-
-## Project status
-
-Dotwise is under active development. Some features and edge cases may not yet be fully tested.
-
-## Contributing
-
-Bug reports, feature suggestions, and contributions are welcome. When reporting an issue, include your operating system, the steps to reproduce it, and a sample image or pipeline JSON when possible.
-
-## AI was used in this project
+The workspace is split into `dotwise_core` (image pipeline), `dotwise_video` (video and batch processing), `dotwise_cli` (command line), and `dotwise_gui` (Tauri desktop app and React UI).
 
 ## License
 
-Dotwise is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+Dotwise is licensed under the MIT License. See [LICENSE](LICENSE).
