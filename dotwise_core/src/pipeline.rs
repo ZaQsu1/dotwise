@@ -17,8 +17,6 @@ pub enum BlendMode { Normal, Multiply, Screen, Overlay, Add }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum KeyMode { None, DropLight, DropDark }
 
-/// Overlay mode: instead of replacing each frame, the result of the layers is laid over the original
-/// frame like a layer on top. A key can make light or dark pixels transparent.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Composite {
     #[serde(default)]
@@ -93,7 +91,6 @@ pub enum Step {
 }
 
 impl Step {
-    /// Copy of this step with noise seeds shifted by the frame number (used for video).
     pub fn with_frame(&self, frame: u32) -> Step {
         let mut s = self.clone();
         let shift = frame.wrapping_mul(7919);
@@ -133,7 +130,6 @@ impl Step {
 pub struct Layer {
     #[serde(default = "yes")]
     pub enabled: bool,
-    /// 1 replaces the layer input with its result, lower values mix the two (same size layers only).
     #[serde(default = "one")]
     pub opacity: f32,
     #[serde(flatten)]
@@ -143,7 +139,6 @@ pub struct Layer {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Pipeline {
     pub layers: Vec<Layer>,
-    /// Video: shift noise seeds every frame so grain and glitches move instead of freezing.
     #[serde(default)]
     pub animate_noise: bool,
     #[serde(default)]

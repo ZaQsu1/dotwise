@@ -1,4 +1,3 @@
-//! Blue noise threshold texture made with the void and cluster method (toroidal, tileable).
 use crate::effects::rand01;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -10,7 +9,6 @@ fn cache() -> &'static Mutex<HashMap<u32, Arc<Vec<f32>>>> {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Cached SIZE x SIZE texture with values in 0..1 (rank based, so the histogram is flat).
 pub fn texture(seed: u32) -> Arc<Vec<f32>> {
     if let Some(t) = cache().lock().unwrap().get(&seed) {
         return t.clone();

@@ -32,7 +32,6 @@ impl Diffusion {
         Diffusion::ShiauFan2,
     ];
 
-    /// Returns (divisor, taps as (dx, dy, weight)).
     pub fn kernel(self) -> (f32, Taps) {
         match self {
             Diffusion::FloydSteinberg => (16.0, &[(1, 0, 7.0), (-1, 1, 3.0), (0, 1, 5.0), (1, 1, 1.0)]),
@@ -52,7 +51,6 @@ impl Diffusion {
                     (-2, 2, 1.0), (-1, 2, 2.0), (0, 2, 4.0), (1, 2, 2.0), (2, 2, 1.0),
                 ],
             ),
-            // Atkinson intentionally propagates only 6/8 of the error.
             Diffusion::Atkinson => (
                 8.0,
                 &[(1, 0, 1.0), (2, 0, 1.0), (-1, 1, 1.0), (0, 1, 1.0), (1, 1, 1.0), (0, 2, 1.0)],

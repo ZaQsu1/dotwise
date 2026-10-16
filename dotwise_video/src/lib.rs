@@ -1,6 +1,3 @@
-//! Video support for Dotwise. Needs `ffmpeg` and `ffprobe` on PATH.
-//! Frames are decoded to raw RGB by ffmpeg, processed in parallel (order preserved),
-//! and piped into a second ffmpeg that encodes H.264 and carries over the audio.
 pub mod batch;
 pub mod hold;
 
@@ -37,7 +34,6 @@ pub struct ExportOptions {
     pub max_frames: Option<u64>,
     pub crf: u32,
     pub threads: usize,
-    /// Temporal hold threshold (0 disables). Typical values 0.02 to 0.1.
     pub hold: f32,
 }
 
@@ -48,7 +44,6 @@ impl Default for ExportOptions {
     }
 }
 
-/// Video output always ends up as mp4, mov, mkv or webm: anything else gets the extension replaced by mp4.
 pub fn normalize_output(output: &str) -> String {
     let lower = output.to_ascii_lowercase();
     if [".mp4", ".mov", ".mkv", ".webm"].iter().any(|e| lower.ends_with(e)) {
@@ -88,7 +83,6 @@ fn parse_rate(s: &str) -> Option<f64> {
     }
 }
 
-/// Reads size from a decoded frame (so rotation metadata is already applied) and timing from ffprobe.
 pub fn probe(path: &str) -> Result<VideoInfo, String> {
     let out = Command::new("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate,duration", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1", path])
@@ -111,7 +105,6 @@ pub fn probe(path: &str) -> Result<VideoInfo, String> {
     Ok(VideoInfo { w: first.w, h: first.h, fps: fps.filter(|f| *f > 0.0).unwrap_or(30.0), duration: duration.unwrap_or(0.0) })
 }
 
-/// Decodes one frame at `seconds` (rotation applied).
 pub fn grab_frame(path: &str, seconds: f64) -> Result<Image, String> {
     let out = Command::new("ffmpeg")
         .args(["-v", "error", "-ss", &format!("{:.3}", seconds.max(0.0)), "-i", path, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"])
@@ -142,7 +135,6 @@ fn kill(c: &mut Child) {
     let _ = c.wait();
 }
 
-/// Runs `pipeline` over every frame. `progress(done, total)` returns false to cancel.
 pub fn export(
     input: &str,
     output: &str,

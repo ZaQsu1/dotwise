@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dotwise",
+  "version": "0.1.0",
+  "identifier": "com.dotwise.editor",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Dotwise",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 980,
+        "minHeight": 640,
+        "decorations": false,
+        "backgroundColor": "#202124"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../assets/dotwise_32.png",
+      "../assets/dotwise_128.png",
+      "../assets/dotwise.ico"
+    ]
+  }
+}

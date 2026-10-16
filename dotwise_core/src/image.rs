@@ -1,4 +1,3 @@
-/// RGB image, float channels in 0..1 (sRGB values, no gamma conversion).
 #[derive(Clone, Debug)]
 pub struct Image {
     pub w: usize,

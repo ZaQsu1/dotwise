@@ -1,10 +1,3 @@
-//! Temporal hold: keep the previous result wherever the source did not change, so error diffusion
-//! does not shimmer on static areas. The reference only moves when a pixel is actually recomputed,
-//! so slow drifts are not missed.
-
-/// `src` is the current source frame (sw x sh, RGB bytes), `out` the freshly processed frame
-/// (ow x oh), `prev_out` the frame written before. `reference` holds the source value each
-/// pixel was last computed from. `threshold` is the largest channel difference (0..1) treated as unchanged.
 pub fn apply(
     src: &[u8],
     sw: usize,
@@ -56,7 +49,7 @@ mod tests {
     fn changed_pixels_use_the_new_output_and_update_the_reference() {
         let mut src = vec![10u8; 4 * 4 * 3];
         let mut reference = src.clone();
-        src[5 * 3] = 200; // pixel (1,1)
+        src[5 * 3] = 200;
         let prev = vec![0u8; 4 * 4 * 3];
         let mut out = vec![255u8; 4 * 4 * 3];
         apply(&src, 4, 4, &mut out, 4, 4, &mut reference, &prev, 0.02);

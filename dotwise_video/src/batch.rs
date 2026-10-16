@@ -1,4 +1,3 @@
-//! Process every png, jpg or jpeg in a folder with one pipeline.
 use dotwise_core::{Image, Pipeline};
 use std::path::Path;
 
@@ -6,8 +5,6 @@ fn is_image(p: &Path) -> bool {
     matches!(p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(), Some("png" | "jpg" | "jpeg"))
 }
 
-/// Writes `<name>_dotwise.png` into `output_dir`. Returns (done, failed).
-/// `progress(done, total)` returns false to cancel.
 pub fn process_folder(
     input_dir: &Path,
     output_dir: &Path,

@@ -8,7 +8,6 @@ fn hash(mut h: u32) -> u32 {
     h ^ (h >> 16)
 }
 
-/// Deterministic per pixel random number in 0..1.
 pub fn rand01(x: u32, y: u32, seed: u32) -> f32 {
     let h = hash(x.wrapping_mul(0x9e37_79b1) ^ hash(y.wrapping_add(seed.wrapping_mul(0x85eb_ca6b))));
     (h >> 8) as f32 / 16_777_216.0
@@ -159,7 +158,6 @@ pub fn noise(img: &Image, amount: f32, seed: u32) -> Image {
     out
 }
 
-/// Horizontal glitch: random rows are displaced by up to `max_shift` pixels.
 pub fn row_shift(img: &Image, max_shift: i32, chance: f32, seed: u32) -> Image {
     let mut out = img.clone();
     for y in 0..img.h {
@@ -195,7 +193,6 @@ fn dct_matrix() -> [[f32; 8]; 8] {
     t
 }
 
-/// JPEG style damage: 8x8 DCT on YCbCr, heavy quantization, and random coefficient corruption in some blocks.
 pub fn jpeg_glitch(img: &Image, quality: u32, corrupt: f32, seed: u32) -> Image {
     let (w, h) = (img.w, img.h);
     if w == 0 || h == 0 { return img.clone(); }
@@ -263,7 +260,6 @@ pub fn jpeg_glitch(img: &Image, quality: u32, corrupt: f32, seed: u32) -> Image 
     out
 }
 
-/// Mix `a` and `b` (same size): amount 0 gives `a`, 1 gives `b`.
 pub fn blend(a: &Image, b: &Image, amount: f32) -> Image {
     let mut out = a.clone();
     for (o, (pa, pb)) in out.px.iter_mut().zip(a.px.iter().zip(b.px.iter())) {
@@ -294,7 +290,6 @@ pub fn posterize(img: &Image, levels: u32) -> Image {
     out
 }
 
-/// Maps luma onto a colour ramp (evenly spaced stops, linear mix).
 pub fn gradient_map(img: &Image, stops: &[[f32; 3]]) -> Image {
     if stops.len() < 2 { return img.clone(); }
     let last = (stops.len() - 1) as f32;

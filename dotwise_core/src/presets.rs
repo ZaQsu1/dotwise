@@ -60,6 +60,43 @@ pub fn builtin() -> Vec<(&'static str, Pipeline)> {
             Step::Glow { threshold: 0.6, radius: 6, intensity: 0.5 },
             Step::Scanlines { period: 3, strength: 0.25 },
         ])),
+        ("Pixel arcade", Pipeline::new(vec![
+            Step::Downscale { factor: 3 },
+            Step::Dither { method: Method::Bayer { size: 4, spread: None }, palette: PaletteSpec::Cga },
+            Step::Upscale { factor: 3 },
+            Step::Scanlines { period: 3, strength: 0.2 },
+        ])),
+        ("Terminal lime", Pipeline::new(vec![
+            adjust(1.15),
+            Step::Dither { method: diff(Diffusion::Atkinson), palette: PaletteSpec::Gameboy },
+        ])),
+        ("Risograph coral", Pipeline::new(vec![
+            Step::Downscale { factor: 2 },
+            Step::GradientMap { colors: vec!["#182d4a".into(), "#e55245".into(), "#f2c879".into()] },
+            Step::Dither { method: Method::Halftone { cell: 7.0, angle: 35.0, spread: None }, palette: PaletteSpec::Extract { count: 5 } },
+            Step::Upscale { factor: 2 },
+        ])),
+        ("VHS tracking", Pipeline::new(vec![
+            Step::Adjust { brightness: 0.0, contrast: 1.08, gamma: 1.0, saturation: 1.15 },
+            Step::Noise { amount: 0.035, seed: 9 },
+            Step::ChromaticAberration { shift: 4 },
+            Step::RowShift { max_shift: 14, chance: 0.035, seed: 4 },
+            Step::JpegGlitch { quality: 28, corrupt: 0.025, seed: 6 },
+            Step::Scanlines { period: 4, strength: 0.16 },
+        ])),
+        ("Blueprint", Pipeline::new(vec![
+            Step::GradientMap { colors: vec!["#071b32".into(), "#23698a".into(), "#d6edea".into()] },
+            Step::Dither { method: Method::Bayer { size: 4, spread: None }, palette: PaletteSpec::Extract { count: 6 } },
+        ])),
+        ("Newspaper color", Pipeline::new(vec![
+            Step::Adjust { brightness: 0.02, contrast: 1.12, gamma: 1.0, saturation: 0.82 },
+            Step::Dither { method: Method::Halftone { cell: 7.0, angle: 15.0, spread: None }, palette: PaletteSpec::Extract { count: 6 } },
+        ])),
+        ("Hard-light poster", Pipeline::new(vec![
+            adjust(1.3),
+            Step::Posterize { levels: 5 },
+            Step::Dither { method: Method::Bayer { size: 4, spread: None }, palette: PaletteSpec::Cga },
+        ])),
     ]
 }
 

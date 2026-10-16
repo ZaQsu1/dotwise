@@ -1,4 +1,3 @@
-//! Dotwise core: image dithering engine with a stackable effects pipeline.
 pub mod bluenoise;
 pub mod dither;
 pub mod effects;
@@ -74,7 +73,6 @@ mod tests {
             }]).run(&img);
             let white = out.px.iter().filter(|p| p[0] > 0.5).count() as f32 / out.px.len() as f32;
             if k == Diffusion::Atkinson {
-                // Atkinson drops a quarter of the error on purpose, so shadows get crushed.
                 assert!(white > 0.08 && white < 0.2126, "{:?} gave {}", k, white);
             } else {
                 assert!((white - 0.2126).abs() < 0.06, "{:?} gave {}", k, white);
@@ -112,7 +110,6 @@ mod tests {
         let mut ranks: Vec<usize> = t.iter().map(|v| (v * (n * n) as f32) as usize).collect();
         ranks.sort();
         assert_eq!(ranks, (0..n * n).collect::<Vec<_>>());
-        // the 10 percent lowest cells should be far apart, clearly more than random placement
         let pts: Vec<(i32, i32)> = (0..n * n).filter(|i| t[*i] < 0.1).map(|i| ((i % n) as i32, (i / n) as i32)).collect();
         let mut sum = 0.0;
         for (i, a) in pts.iter().enumerate() {
@@ -146,18 +143,14 @@ mod tests {
     fn overlay_composites_over_the_original() {
         let mut base = Image::new(8, 8);
         for p in base.px.iter_mut() { *p = [0.2; 3]; }
-        // layers produce a white image; overlay at 50 percent must land halfway between
         let mut p = Pipeline::new(vec![Step::Adjust { brightness: 1.0, contrast: 1.0, gamma: 1.0, saturation: 1.0 }]);
         p.composite = Composite { enabled: true, opacity: 0.5, ..Composite::default() };
         assert!(p.run(&base).px.iter().all(|px| (px[0] - 0.6).abs() < 1e-5));
-        // keying out light pixels leaves the original untouched
         p.composite = Composite { enabled: true, key: KeyMode::DropLight, key_threshold: 0.5, ..Composite::default() };
         assert!(p.run(&base).px.iter().all(|px| (px[0] - 0.2).abs() < 1e-5));
-        // multiply of 0.2 with a 0.5 gray
         let mut q = Pipeline::new(vec![Step::Adjust { brightness: 0.0, contrast: 0.0, gamma: 1.0, saturation: 1.0 }]);
         q.composite = Composite { enabled: true, mode: BlendMode::Multiply, ..Composite::default() };
         assert!(q.run(&base).px.iter().all(|px| (px[0] - 0.1).abs() < 1e-4), "{:?}", q.run(&base).px[0]);
-        // disabled overlay and old JSON without the field keep the plain behaviour
         let old: Pipeline = serde_json::from_str("{\"layers\":[{\"type\":\"Invert\"}]}").unwrap();
         assert!(!old.composite.enabled);
     }

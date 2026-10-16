@@ -58,7 +58,6 @@ fn is_video_output(p: &str) -> bool {
     [".mp4", ".mov", ".mkv", ".webm"].iter().any(|e| l.ends_with(e))
 }
 
-/// `<input folder>/<input name>_dotwise.<ext>`
 fn default_out(input: &str, ext: &str) -> String {
     let p = std::path::Path::new(input);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
@@ -344,7 +343,6 @@ impl Tab {
                 Msg::VideoLoaded(p, r) => match r {
                     Ok((info, frame)) => {
                         self.loading = false;
-                        // a video always exports as a video: mp4 wins unless a video name is already set
                         if !is_video_output(&self.out_path) {
                             self.out_path = default_out(&p, "mp4");
                         }
@@ -812,7 +810,7 @@ impl Tab {
                 }
             });
             ui.separator();
-            let mut action: Option<(usize, i32)> = None; // (index, -1 up, 1 down, 0 remove)
+            let mut action: Option<(usize, i32)> = None;
             let mut reorder: Option<(usize, usize)> = None;
             egui::ScrollArea::vertical().show(ui, |ui| {
                 let n = self.pipeline.layers.len();

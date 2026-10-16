@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Palette {
     pub colors: Vec<[f32; 3]>,
-    /// True for ramps (mono, gray, duo, gameboy): dithering then works on luma only,
-    /// which keeps error diffusion stable on colour images.
     pub luma_only: bool,
 }
 
@@ -18,7 +16,6 @@ pub enum PaletteSpec {
     Gameboy,
     Cga,
     Custom { colors: Vec<String> },
-    /// Median cut palette extracted from the image reaching this step.
     Extract { count: u32 },
 }
 
@@ -63,7 +60,6 @@ impl Palette {
         best
     }
 
-    /// Median cut: split the box with the widest channel range at its median.
     pub fn extract(img: &Image, count: usize) -> Self {
         let count = count.max(2).min(256);
         let step = (img.px.len() / 65536).max(1);
