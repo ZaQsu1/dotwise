@@ -1,4 +1,33 @@
-node_modules
+# Node / frontend
+node_modules/
 dist/
-target/
+.vite/
 *.tsbuildinfo
+
+# Rust / build output
+/target/
+**/target/
+*.rlib
+*.rmeta
+*.pdb
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Release artifacts and packaged bundles
+/assets.zip
+*.zip
+*.7z
+/instalator/*.exe
+/target/release/*.exe
+/target/release/bundle/

@@ -1,114 +1,112 @@
 # Dotwise
 
-![Dotwise](assets/dotwise-baner.png)
+Dotwise is a creative image and video processor focused on stylized visual output: dithering, ASCII art, palettes, glow, scanlines, glitching, and export for stills and motion.
 
-Dotwise is a creative application for transforming images and videos into distinctive visual styles.
+## Highlights
 
-## Showcase
-
-![Dotwise desktop application](assets/showcase.png)
+- Stackable image pipeline with adjustable layers and blend modes
+- ASCII art effect for images and video frames
+- GIF input and export support in the desktop workflow
+- Dithering styles: error diffusion, Bayer, halftone, lines, blue noise, white noise, and more
+- Palette tools: built-in, grayscale, duotone, Game Boy, and custom palette extraction
+- Video preview and export via ffmpeg
+- Windows desktop app with bundled WebView2 installer
 
 ## Features
 
-- Error-diffusion, Bayer, halftone, line, white-noise, gradient-noise, and blue-noise dithering
-- Built-in, grayscale, duotone, CGA, Game Boy, custom, and image-extracted palettes
-- A stackable pipeline with adjustments, blur, scaling, glow, scanlines, grain, glitches, posterization, gradient maps, and sharpening
-- Live preview, zoom and pan, original/result comparison, layer controls, and undo/redo
-- Built-in presets and reusable JSON pipelines
-- PNG, JPEG, and SVG image export
-- Batch processing of PNG and JPEG folders
-- Video preview and export, including animated noise and temporal hold
+- Adjustable image effects: brightness, contrast, gamma, saturation, blur, sharpen, glow, scanlines, invert, posterize, gradient map
+- Noise and glitch layers with temporal animation support
+- SVG export and raster export for PNG/JPEG
+- Multi-format media picker: PNG, JPG, JPEG, SVG, GIF, MP4, MOV, MKV, WEBM, AVI, M4V
+- Batch processing support for folders
+- Live preview with original/result comparison and layer controls
 
 ## Requirements
 
-- A current stable Rust toolchain and Cargo
-- Node.js 20 or newer and npm for the React/Tauri desktop app
-- `ffmpeg` and `ffprobe` on `PATH` for video import and export
-- On Windows, the Microsoft Edge WebView2 Runtime. The Inno Setup installer in `instalator/` includes Microsoft's signed bootstrapper and runs it only if the runtime is missing.
-- On Linux, the system WebKitGTK 4.1 development/runtime packages and the usual Tauri build dependencies. For Debian/Ubuntu:
+- Rust stable (Cargo)
+- Node.js 20+ and npm
+- ffmpeg and ffprobe on PATH for video import/export
+- Windows: Microsoft Edge WebView2 Runtime
+- Linux: WebKitGTK 4.1 and Tauri build dependencies
 
-  ```sh
-  sudo apt install build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
-  ```
+Ubuntu/Debian example:
 
-The Linux WebView uses WebKitGTK; it does not require Microsoft Edge. Package names vary by distribution.
+```bash
+sudo apt install -y build-essential curl wget file pkg-config libssl-dev libgtk-3-dev librsvg2-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev patchelf
+```
 
-## Desktop app
+## Quick start
 
-Install JavaScript dependencies and start the development app:
+Install frontend dependencies and run the desktop app:
 
-```sh
+```bash
 npm ci
 npm run tauri dev
 ```
 
-Create a self-contained release build with the frontend embedded in the app:
+Build the production app:
 
-```sh
-npm run tauri build
+```bash
+npm run build
+cargo test --workspace
 ```
 
-On Windows, build the NSIS installer with:
+For a Windows release executable:
 
 ```powershell
-npm run tauri build -- --bundles nsis
+npx tauri build --no-bundle
 ```
 
-The release executable is written to `target/release/`. Tauri bundles are written below `target/release/bundle/`.
+Then build the installer using Inno Setup 6:
 
-To create the additional Inno Setup installer, first build the release executable, then compile `instalator/Dotwise.iss` with Inno Setup 6. The script writes `instalator/Dotwise-Setup-0.1.0-x64.exe` and expects `instalator/WebView2Bootstrapper.exe` alongside it.
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /O'target\release' 'instalator\Dotwise.iss'
+```
 
-## Command line
+## CLI usage
 
 Build the CLI:
 
-```sh
+```bash
 cargo build --release -p dotwise_cli
 ```
 
-Process an image with a built-in preset. The output extension selects PNG, JPEG, or SVG:
+Process an image with a built-in preset:
 
-```sh
+```bash
 cargo run --release -p dotwise_cli -- input.png output.png --preset "Classic mono"
 cargo run --release -p dotwise_cli -- input.png output.svg --preset "Newsprint"
 ```
 
-Dump a preset to JSON, edit it, and use it as a pipeline:
+Process a whole folder:
 
-```sh
-cargo run --release -p dotwise_cli -- --dump "Duotone" > duotone.json
-cargo run --release -p dotwise_cli -- input.png output.png --pipeline duotone.json
-```
-
-Batch process a folder:
-
-```sh
+```bash
 cargo run --release -p dotwise_cli -- batch ./input ./output --preset "Handheld green"
 ```
 
-Process a video (requires `ffmpeg` and `ffprobe`):
+Process a video:
 
-```sh
+```bash
 cargo run --release -p dotwise_cli -- video input.mp4 output.mp4 --preset "Blue noise"
 ```
 
-For all CLI options:
+See all CLI flags:
 
-```sh
+```bash
 cargo run --release -p dotwise_cli -- --help
 ```
 
-## Development
+## Project layout
 
-Run the Rust workspace tests and build the frontend:
-
-```sh
-cargo test --workspace
-npm run build
-```
-
-The workspace is split into `dotwise_core` (image pipeline), `dotwise_video` (video and batch processing), `dotwise_cli` (command line), and `dotwise_gui` (Tauri desktop app and React UI).
+- `dotwise_core` — image effects, pipeline, palettes, SVG output
+- `dotwise_video` — frame extraction, video export, batch processing
+- `dotwise_cli` — command-line interface
+- `dotwise_gui` — Tauri desktop app and React UI
 
 ## License
 
 Dotwise is licensed under the MIT License. See [LICENSE](LICENSE).
+
+## Release notes
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the current release summary and GitHub release checklist.
