@@ -1,4 +1,48 @@
 use crate::image::{clamp01, luma, Image};
+use font8x8::{UnicodeFonts, BASIC_FONTS};
+
+const ASCII_RAMP: &[u8] = b"@%#*+=-:. ";
+
+pub fn ascii(img: &Image, cell_size: u32, colored: bool) -> Image {
+    if img.w == 0 || img.h == 0 { return img.clone(); }
+    let cell_w = cell_size.max(2) as usize;
+    let cell_h = cell_w.saturating_mul(2);
+    let mut out = Image::new(img.w, img.h);
+
+    for top in (0..img.h).step_by(cell_h) {
+        for left in (0..img.w).step_by(cell_w) {
+            let right = (left + cell_w).min(img.w);
+            let bottom = (top + cell_h).min(img.h);
+            let mut color = [0.0; 3];
+            let mut brightness = 0.0;
+            let mut count = 0.0;
+            for y in top..bottom {
+                for x in left..right {
+                    let pixel = img.px[y * img.w + x];
+                    for channel in 0..3 { color[channel] += pixel[channel]; }
+                    brightness += luma(pixel);
+                    count += 1.0;
+                }
+            }
+            for channel in &mut color { *channel /= count; }
+            let brightness = brightness / count;
+            let ramp_index = (brightness * (ASCII_RAMP.len() - 1) as f32).round() as usize;
+            let character = ASCII_RAMP[ramp_index] as char;
+            let glyph = BASIC_FONTS.get(character).unwrap_or([0; 8]);
+            let ink = if colored { color } else { [brightness; 3] };
+
+            for y in top..bottom {
+                let glyph_y = ((y - top) * 8 / cell_h).min(7);
+                for x in left..right {
+                    let glyph_x = ((x - left) * 8 / cell_w).min(7);
+                    let set = glyph[glyph_y] & (1 << glyph_x) != 0;
+                    out.px[y * img.w + x] = if set { ink } else { [1.0; 3] };
+                }
+            }
+        }
+    }
+    out
+}
 
 fn hash(mut h: u32) -> u32 {
     h ^= h >> 16;

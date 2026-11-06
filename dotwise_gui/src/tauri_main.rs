@@ -7,24 +7,53 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::io::Cursor;
-use tauri::{DragDropEvent, Emitter, State, WebviewEvent};
+use tauri::{Emitter, State};
 
 #[derive(Default)]
-struct PreviewCache {
+struct SourceCache {
     next_id: AtomicU64,
-    images: Mutex<HashMap<u64, Arc<Image>>>,
+    images: Mutex<HashMap<u64, CachedImage>>,
+}
+
+struct CachedImage {
+    original: Arc<Image>,
+    preview: Arc<Image>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedImage {
+    source_id: u64,
+    width: usize,
+    height: usize,
+    preview_png: String,
+}
+
+struct PreparedImageParts {
+    original: Arc<Image>,
+    preview: Arc<Image>,
+    preview_png: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadedVideo {
+    width: u32,
+    height: u32,
+    fps: f64,
+    duration: f64,
+    frame: PreparedImage,
+}
+
+fn decode_bytes(bytes: &[u8]) -> Result<Image, String> {
+    let decoded = image::load_from_memory(&bytes).map_err(|error| error.to_string())?.to_rgb8();
+    Ok(Image::from_rgb8(decoded.width() as usize, decoded.height() as usize, decoded.as_raw()))
 }
 
 fn decode_source(image_data: &str) -> Result<Image, String> {
-    let encoded = image_data
-        .split_once(',')
-        .map(|(_, data)| data)
-        .unwrap_or(image_data);
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|error| error.to_string())?;
-    let decoded = image::load_from_memory(&bytes).map_err(|error| error.to_string())?.to_rgb8();
-    Ok(Image::from_rgb8(decoded.width() as usize, decoded.height() as usize, decoded.as_raw()))
+    let encoded = image_data.split_once(',').map(|(_, data)| data).unwrap_or(image_data);
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).map_err(|error| error.to_string())?;
+    decode_bytes(&bytes)
 }
 
 fn encode_png(image: &Image) -> Result<String, String> {
@@ -35,6 +64,32 @@ fn encode_png(image: &Image) -> Result<String, String> {
         .write_to(&mut bytes, image::ImageOutputFormat::Png)
         .map_err(|error| error.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes.into_inner()))
+}
+
+fn prepare_image_parts(original: Image) -> Result<PreparedImageParts, String> {
+    let original = Arc::new(original);
+    let longest_side = original.w.max(original.h);
+    let factor = ((longest_side + 1535) / 1536).max(1);
+    let preview = if factor == 1 { original.clone() } else { Arc::new(dotwise_core::effects::downscale(&original, factor as u32)) };
+    let preview_png = encode_png(&preview)?;
+    Ok(PreparedImageParts { original, preview, preview_png })
+}
+
+fn store_image(cache: &SourceCache, parts: PreparedImageParts) -> Result<PreparedImage, String> {
+    let width = parts.original.w;
+    let height = parts.original.h;
+    let source_id = cache.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    cache.images.lock().map_err(|error| error.to_string())?.insert(source_id, CachedImage {
+        original: parts.original,
+        preview: parts.preview,
+    });
+    Ok(PreparedImage { source_id, width, height, preview_png: parts.preview_png })
+}
+
+fn grayscale_bytes(image: &Image) -> Option<Vec<u8>> {
+    image.px.iter().all(|pixel| {
+        (pixel[0] - pixel[1]).abs() <= f32::EPSILON && (pixel[1] - pixel[2]).abs() <= f32::EPSILON
+    }).then(|| image.px.iter().map(|pixel| (pixel[0].clamp(0.0, 1.0) * 255.0 + 0.5) as u8).collect())
 }
 
 #[tauri::command]
@@ -61,22 +116,31 @@ async fn render_image(image_data: String, pipeline_json: String) -> Result<Strin
 }
 
 #[tauri::command]
-async fn prepare_preview(cache: State<'_, PreviewCache>, image_data: String) -> Result<u64, String> {
-    let preview = tauri::async_runtime::spawn_blocking(move || decode_source(&image_data))
+async fn prepare_source(cache: State<'_, SourceCache>, image_data: String) -> Result<PreparedImage, String> {
+    let parts = tauri::async_runtime::spawn_blocking(move || decode_source(&image_data).and_then(prepare_image_parts))
         .await
         .map_err(|error| error.to_string())??;
-    let id = cache.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    cache.images.lock().map_err(|error| error.to_string())?.insert(id, Arc::new(preview));
-    Ok(id)
+    store_image(&cache, parts)
 }
 
 #[tauri::command]
-async fn render_preview(cache: State<'_, PreviewCache>, preview_id: u64, pipeline_json: String) -> Result<String, String> {
+async fn open_image(cache: State<'_, SourceCache>, path: String) -> Result<PreparedImage, String> {
+    let parts = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+        decode_bytes(&bytes).and_then(prepare_image_parts)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    store_image(&cache, parts)
+}
+
+#[tauri::command]
+async fn render_preview(cache: State<'_, SourceCache>, source_id: u64, pipeline_json: String) -> Result<String, String> {
     let source = cache.images.lock()
         .map_err(|error| error.to_string())?
-        .get(&preview_id)
-        .cloned()
-        .ok_or_else(|| "Preview source expired; reopen the image".to_string())?;
+        .get(&source_id)
+        .map(|image| image.preview.clone())
+        .ok_or_else(|| "Image source expired; reopen the image".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         let pipeline = Pipeline::from_json(&pipeline_json)?;
         encode_png(&pipeline.run(&source))
@@ -86,8 +150,8 @@ async fn render_preview(cache: State<'_, PreviewCache>, preview_id: u64, pipelin
 }
 
 #[tauri::command]
-fn release_preview(cache: State<'_, PreviewCache>, preview_id: u64) -> Result<(), String> {
-    cache.images.lock().map_err(|error| error.to_string())?.remove(&preview_id);
+fn release_source(cache: State<'_, SourceCache>, source_id: u64) -> Result<(), String> {
+    cache.images.lock().map_err(|error| error.to_string())?.remove(&source_id);
     Ok(())
 }
 
@@ -97,17 +161,6 @@ fn pick_media() -> Option<String> {
         .add_filter("Images and video", &["png", "jpg", "jpeg", "mp4", "mov", "mkv", "webm", "avi", "m4v", "gif"])
         .pick_file()
         .map(|path| path.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-fn read_image(path: String) -> Result<String, String> {
-    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-    let ext = std::path::Path::new(&path).extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
-    let mime = match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        _ => "image/png",
-    };
-    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
 #[tauri::command]
@@ -126,14 +179,27 @@ fn pick_output_path(format: String) -> Option<String> {
 }
 
 #[tauri::command]
-async fn export_image(image_data: String, pipeline_json: String, output_path: String) -> Result<String, String> {
+async fn export_image(cache: State<'_, SourceCache>, source_id: u64, pipeline_json: String, output_path: String) -> Result<String, String> {
+    let source = cache.images.lock()
+        .map_err(|error| error.to_string())?
+        .get(&source_id)
+        .map(|image| image.original.clone())
+        .ok_or_else(|| "Image source expired; reopen the image".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
-        let source = decode_source(&image_data)?;
         let pipeline = Pipeline::from_json(&pipeline_json)?;
         let output = pipeline.run(&source);
+        let grayscale = if output_path.to_ascii_lowercase().ends_with(".png") { grayscale_bytes(&output) } else { None };
         if output_path.to_ascii_lowercase().ends_with(".svg") {
             let svg = dotwise_core::svg::to_svg(&output, 1)?;
             std::fs::write(&output_path, svg).map_err(|error| error.to_string())?;
+        } else if let Some(grayscale) = grayscale {
+            image::save_buffer(
+                &output_path,
+                &grayscale,
+                output.w as u32,
+                output.h as u32,
+                image::ColorType::L8,
+            ).map_err(|error| error.to_string())?;
         } else {
             image::save_buffer(
                 &output_path,
@@ -150,27 +216,31 @@ async fn export_image(image_data: String, pipeline_json: String, output_path: St
 }
 
 #[tauri::command]
-async fn load_video(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+async fn load_video(cache: State<'_, SourceCache>, path: String) -> Result<LoadedVideo, String> {
+    let (info, parts) = tauri::async_runtime::spawn_blocking(move || {
         let info = dotwise_video::probe(&path)?;
-        let frame_png = encode_png(&dotwise_video::grab_frame(&path, 0.0)?)?;
-        serde_json::to_string(&serde_json::json!({
-            "width": info.w,
-            "height": info.h,
-            "fps": info.fps,
-            "duration": info.duration,
-            "frame": frame_png,
-        })).map_err(|error| error.to_string())
+        let frame = dotwise_video::grab_frame(&path, 0.0)?;
+        Ok::<_, String>((info, prepare_image_parts(frame)?))
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+    Ok(LoadedVideo {
+        width: info.w as u32,
+        height: info.h as u32,
+        fps: info.fps,
+        duration: info.duration,
+        frame: store_image(&cache, parts)?,
+    })
 }
 
 #[tauri::command]
-async fn video_frame(path: String, seconds: f64) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || encode_png(&dotwise_video::grab_frame(&path, seconds)?))
+async fn video_frame(cache: State<'_, SourceCache>, path: String, seconds: f64) -> Result<PreparedImage, String> {
+    let parts = tauri::async_runtime::spawn_blocking(move || {
+        dotwise_video::grab_frame(&path, seconds).and_then(prepare_image_parts)
+    })
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+    store_image(&cache, parts)
 }
 
 #[tauri::command]
@@ -272,25 +342,30 @@ fn load_preset_file() -> Result<String, String> {
 
 fn main() {
     tauri::Builder::default()
-        .manage(PreviewCache::default())
+        .manage(SourceCache::default())
         .manage(Arc::new(AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
-            list_presets, get_preset, render_image, prepare_preview, render_preview, release_preview, pick_media, read_image, pick_output_path,
+            list_presets, get_preset, render_image, prepare_source, open_image, render_preview, release_source, pick_media, pick_output_path,
             export_image, load_video, video_frame, pick_video_path, export_video, process_batch,
             cancel_export, save_preset_file, load_preset_file
         ])
-        .on_webview_event(|webview, event| {
-            if let WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
-                if let Some(path) = paths.iter().find(|path| {
-                    matches!(
-                        path.extension().and_then(|extension| extension.to_str()).map(str::to_ascii_lowercase).as_deref(),
-                        Some("png" | "jpg" | "jpeg" | "mp4" | "mov" | "mkv" | "webm" | "avi" | "m4v" | "gif")
-                    )
-                }) {
-                    let _ = webview.emit("media-dropped", path.to_string_lossy().to_string());
-                }
-            }
-        })
         .run(tauri::generate_context!())
         .expect("error while running Dotwise");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{grayscale_bytes, Image};
+
+    #[test]
+    fn mono_images_encode_as_single_channel_bytes() {
+        let image = Image { w: 2, h: 1, px: vec![[0.0; 3], [0.5; 3]] };
+        assert_eq!(grayscale_bytes(&image), Some(vec![0, 128]));
+    }
+
+    #[test]
+    fn color_images_do_not_use_single_channel_encoding() {
+        let image = Image { w: 1, h: 1, px: vec![[1.0, 0.0, 0.0]] };
+        assert_eq!(grayscale_bytes(&image), None);
+    }
 }

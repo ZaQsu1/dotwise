@@ -2,7 +2,7 @@
 
 ![Dotwise](assets/dotwise-baner.png)
 
-A Rust-powered image dithering and effects editor with a React + Tauri desktop interface, command-line tools, batch processing, and video support.
+Dotwise is a creative application for transforming images and videos into distinctive visual styles.
 
 ## Showcase
 

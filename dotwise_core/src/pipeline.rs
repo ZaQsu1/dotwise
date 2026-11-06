@@ -75,6 +75,7 @@ pub fn composite_over(base: &Image, top: &Image, c: &Composite) -> Image {
 pub enum Step {
     Adjust { brightness: f32, contrast: f32, gamma: f32, saturation: f32 },
     Blur { radius: u32 },
+    Ascii { cell_size: u32, colored: bool },
     Downscale { factor: u32 },
     Upscale { factor: u32 },
     Dither { method: Method, palette: PaletteSpec },
@@ -106,6 +107,7 @@ impl Step {
         match self {
             Step::Adjust { brightness, contrast, gamma, saturation } => effects::adjust(img, *brightness, *contrast, *gamma, *saturation),
             Step::Blur { radius } => effects::box_blur(img, *radius),
+            Step::Ascii { cell_size, colored } => effects::ascii(img, *cell_size, *colored),
             Step::Downscale { factor } => effects::downscale(img, *factor),
             Step::Upscale { factor } => effects::upscale(img, *factor),
             Step::Dither { method, palette } => dither::apply(method, img, &palette.resolve(img)),

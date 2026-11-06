@@ -183,6 +183,18 @@ mod tests {
     }
 
     #[test]
+    fn ascii_layer_renders_character_cells_without_changing_dimensions() {
+        let mut img = Image::new(16, 32);
+        for pixel in &mut img.px { *pixel = [0.0; 3]; }
+        let pipeline = Pipeline::new(vec![Step::Ascii { cell_size: 8, colored: false }]);
+        let out = pipeline.run(&img);
+        assert_eq!((out.w, out.h), (img.w, img.h));
+        assert!(out.px.iter().any(|pixel| *pixel == [0.0; 3]));
+        assert!(out.px.iter().any(|pixel| *pixel == [1.0; 3]));
+        assert_eq!(Pipeline::from_json(&pipeline.to_json()).unwrap(), pipeline);
+    }
+
+    #[test]
     fn bayer_is_a_permutation() {
         for n in [2usize, 4, 8, 16] {
             let mut m = bayer_matrix(n);

@@ -34,12 +34,13 @@ import brandLogo from "../../assets/dotwise_icon.png";
 type Layer = { type: string; enabled: boolean; opacity: number; [key: string]: any };
 type Pipeline = { layers: Layer[]; animate_noise?: boolean; composite?: Record<string, any> };
 type VideoDocument = { path: string; duration: number; fps: number; width: number; height: number };
+type PreparedImage = { sourceId: number; width: number; height: number; previewPng: string };
+type LoadedVideo = { width: number; height: number; fps: number; duration: number; frame: PreparedImage };
 type DocumentTab = {
   id: number;
   name: string;
   source: string | null;
-  previewSource: string | null;
-  previewId: number | null;
+  sourceId: number | null;
   preview: string | null;
   pipeline: Pipeline;
   history: Pipeline[];
@@ -65,7 +66,8 @@ const emptyPipeline: Pipeline = {
 };
 const layerNames: Record<string, string> = {
   Adjust: "Adjust",
-  Blur: "Gaussian blur",
+  Blur: "Box blur",
+  Ascii: "ASCII art",
   Downscale: "Downscale",
   Upscale: "Upscale",
   Dither: "Dither",
@@ -87,8 +89,7 @@ function newDocument(id: number): DocumentTab {
     id,
     name: "Untitled",
     source: null,
-    previewSource: null,
-    previewId: null,
+    sourceId: null,
     preview: null,
     pipeline,
     history: [structuredClone(pipeline)],
@@ -117,13 +118,12 @@ function dataUrl(file: File): Promise<string> {
   });
 }
 
-function imageSize(src: string): Promise<[number, number]> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve([image.naturalWidth, image.naturalHeight]);
-    image.onerror = () => reject(new Error("This image could not be decoded"));
-    image.src = src;
-  });
+function isSupportedImage(file: File) {
+  return /^image\/(png|jpeg)$/.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+}
+
+function isSupportedMediaPath(path: string) {
+  return /\.(png|jpe?g|mp4|mov|mkv|webm|avi|m4v|gif)$/i.test(path);
 }
 
 function niceName(type: string) {
@@ -134,6 +134,7 @@ function defaultLayer(type: string): Layer {
   const defaults: Record<string, Layer> = {
     Adjust: { type, enabled: true, opacity: 1, brightness: 0, contrast: 1, gamma: 1, saturation: 1 },
     Blur: { type, enabled: true, opacity: 1, radius: 2 },
+    Ascii: { type, enabled: true, opacity: 1, cell_size: 8, colored: true },
     Downscale: { type, enabled: true, opacity: 1, factor: 2 },
     Upscale: { type, enabled: true, opacity: 1, factor: 2 },
     Dither: {
@@ -184,7 +185,7 @@ function numericRange(key: string): [number, number, number] {
     saturation: [0, 2, 0.01], opacity: [0, 1, 0.01], strength: [0, 1.2, 0.01],
     intensity: [0, 2, 0.01], threshold: [0, 1, 0.01], key_threshold: [0, 1, 0.01], key_softness: [0, 0.5, 0.01], angle: [-90, 90, 1],
     amount: [0, 3, 0.01], chance: [0, 1, 0.01], corrupt: [0, 1, 0.01],
-    radius: [0, 40, 1], period: [2, 24, 1], levels: [2, 32, 1], shift: [-30, 30, 1],
+    radius: [0, 40, 1], cell_size: [2, 24, 1], period: [2, 24, 1], levels: [2, 32, 1], shift: [-30, 30, 1],
     factor: [1, 16, 1], cell: [3, 24, 0.5], size: [2, 16, 1], quality: [1, 100, 1],
     max_shift: [0, 100, 1], seed: [0, 9999, 1],
   };
@@ -207,6 +208,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const fileInput = useRef<HTMLInputElement>(null);
+  const nativeOpenRef = useRef<(path: string) => void>(() => {});
   const renderSequence = useRef(0);
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
   const historyEdit = useRef<{ id: number; time: number } | null>(null);
@@ -244,7 +246,7 @@ export default function App() {
 
   useEffect(() => {
     const sequence = ++renderSequence.current;
-    if (active.previewId === null) {
+    if (active.sourceId === null) {
       setBusy(false);
       return;
     }
@@ -255,7 +257,7 @@ export default function App() {
         setBusy(true);
         try {
           const pipelineJson = JSON.stringify(active.pipeline);
-          const png = await invoke<string>("render_preview", { previewId: active.previewId, pipelineJson });
+          const png = await invoke<string>("render_preview", { sourceId: active.sourceId, pipelineJson });
           if (!cancelled && sequence === renderSequence.current) {
             setDocuments((items) => items.map((item) => item.id === active.id ? { ...item, preview: `data:image/png;base64,${png}`, status: "Preview ready" } : item));
           }
@@ -267,25 +269,21 @@ export default function App() {
       });
     }, 60);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [active.id, active.pipeline, active.previewId]);
+  }, [active.id, active.pipeline, active.sourceId]);
 
   useEffect(() => {
     if (!active.video) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void invoke<string>("video_frame", { path: active.video!.path, seconds: active.videoTime })
-        .then(async (png) => {
-          if (cancelled) return;
-          const source = `data:image/png;base64,${png}`;
-          const [width, height] = await imageSize(source);
-          const previewSource = await makePreview(source, width, height);
-          const previewId = await invoke<number>("prepare_preview", { imageData: previewSource });
+      void invoke<PreparedImage>("video_frame", { path: active.video!.path, seconds: active.videoTime })
+        .then((prepared) => {
           if (cancelled) {
-            void invoke("release_preview", { previewId });
+            void invoke("release_source", { sourceId: prepared.sourceId });
             return;
           }
-          releasePreview(active.previewId, active.id);
-          patchDocument(active.id, { source, previewSource, previewId, preview: source, width, height, status: `Frame at ${active.videoTime.toFixed(2)} s` });
+          releaseSource(active.sourceId, active.id);
+          const source = `data:image/png;base64,${prepared.previewPng}`;
+          patchDocument(active.id, { sourceId: prepared.sourceId, source, preview: source, width: prepared.width, height: prepared.height, status: `Frame at ${active.videoTime.toFixed(2)} s` });
         })
         .catch((error) => { if (!cancelled) patchDocument(active.id, { status: String(error) }); });
     }, 160);
@@ -298,15 +296,13 @@ export default function App() {
     setDocuments((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
   }
 
-  function releasePreview(previewId: number | null, documentId: number) {
-    if (previewId === null || documents.some((item) => item.id !== documentId && item.previewId === previewId)) return;
-    void invoke("release_preview", { previewId }).catch(() => {});
+  function releaseSource(sourceId: number | null, documentId: number) {
+    if (sourceId === null || documents.some((item) => item.id !== documentId && item.sourceId === sourceId)) return;
+    void invoke("release_source", { sourceId }).catch(() => {});
   }
 
-  async function openDocumentSource(name: string, source: string, video: VideoDocument | null = null) {
-    const [width, height] = await imageSize(source);
-    const previewSource = await makePreview(source, width, height);
-    const previewId = await invoke<number>("prepare_preview", { imageData: previewSource });
+  function openDocumentSource(name: string, prepared: PreparedImage, video: VideoDocument | null = null) {
+    const source = `data:image/png;base64,${prepared.previewPng}`;
     const isBlank = !active.source && active.name === "Untitled";
     let targetId = active.id;
     if (!isBlank) {
@@ -319,26 +315,26 @@ export default function App() {
     patchDocument(targetId, {
       name,
       source,
-      previewSource,
-      previewId,
+      sourceId: prepared.sourceId,
       preview: source,
-      width,
-      height,
+      width: prepared.width,
+      height: prepared.height,
       video,
       videoTime: 0,
-      status: video ? `Video ${video.width} × ${video.height} at ${video.fps.toFixed(2)} fps` : `${width} × ${height}`,
+      status: video ? `Video ${video.width} × ${video.height} at ${video.fps.toFixed(2)} fps` : `${prepared.width} × ${prepared.height}`,
     });
     return targetId;
   }
 
   async function openFile(file?: File) {
     if (!file) return;
-    if (!/^image\/(png|jpeg)$/.test(file.type)) {
+    if (!isSupportedImage(file)) {
       patchDocument(active.id, { status: "Choose a PNG or JPEG image" });
       return;
     }
     try {
-      await openDocumentSource(file.name, await dataUrl(file));
+      const prepared = await invoke<PreparedImage>("prepare_source", { imageData: await dataUrl(file) });
+      openDocumentSource(file.name, prepared);
     } catch (error) {
       patchDocument(active.id, { status: String(error) });
     }
@@ -348,15 +344,17 @@ export default function App() {
     try {
       const name = path.split(/[\\/]/).pop() ?? path;
       if (/\.(mp4|mov|mkv|webm|avi|m4v|gif)$/i.test(path)) {
-        const loaded = JSON.parse(await invoke<string>("load_video", { path })) as { width: number; height: number; fps: number; duration: number; frame: string };
-        await openDocumentSource(name, `data:image/png;base64,${loaded.frame}`, { path, width: loaded.width, height: loaded.height, fps: loaded.fps, duration: loaded.duration });
+        const loaded = await invoke<LoadedVideo>("load_video", { path });
+        openDocumentSource(name, loaded.frame, { path, width: loaded.width, height: loaded.height, fps: loaded.fps, duration: loaded.duration });
       } else {
-        await openDocumentSource(name, await invoke<string>("read_image", { path }));
+        openDocumentSource(name, await invoke<PreparedImage>("open_image", { path }));
       }
     } catch (error) {
       patchDocument(active.id, { status: String(error) });
     }
   }
+
+  nativeOpenRef.current = (path) => { void openNativePath(path); };
 
   async function openNativeMedia() {
     try {
@@ -371,12 +369,14 @@ export default function App() {
     if (!isTauri()) return;
     let mounted = true;
     let unlisten: (() => void) | undefined;
-    void listen<string>("media-dropped", ({ payload }) => {
-      void openNativePath(payload);
+    void getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type !== "drop") return;
+      const path = event.payload.paths.find(isSupportedMediaPath);
+      if (path) nativeOpenRef.current(path);
     }).then((stop) => {
       if (mounted) unlisten = stop;
       else stop();
-    }).catch(() => {});
+    }).catch((error) => patchDocument(active.id, { status: `Could not listen for dropped files: ${String(error)}` }));
     return () => { mounted = false; unlisten?.(); };
   }, []);
 
@@ -388,7 +388,9 @@ export default function App() {
   function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
-    void openFile(event.dataTransfer.files[0]);
+    const file = Array.from(event.dataTransfer.files).find(isSupportedImage);
+    if (file) void openFile(file);
+    else patchDocument(active.id, { status: "Drop a PNG or JPEG image" });
   }
 
   async function choosePreset(name: string) {
@@ -480,7 +482,7 @@ export default function App() {
   }
 
   async function exportImage() {
-    if (!active.source) return;
+    if (active.sourceId === null) return;
     setBusy(true);
     try {
       const pipelineJson = JSON.stringify(active.pipeline);
@@ -499,7 +501,7 @@ export default function App() {
         });
         patchDocument(active.id, { status });
       } else {
-        const status = await invoke<string>("export_image", { imageData: active.source, pipelineJson, outputPath });
+        const status = await invoke<string>("export_image", { sourceId: active.sourceId, pipelineJson, outputPath });
         patchDocument(active.id, { status });
       }
     } catch (error) {
@@ -547,7 +549,7 @@ export default function App() {
 
   function closeTab(id: number) {
     const closing = documents.find((item) => item.id === id);
-    if (closing) releasePreview(closing.previewId, id);
+    if (closing) releaseSource(closing.sourceId, id);
     if (documents.length === 1) {
       setDocuments([newDocument(id + 1)]);
       setActiveId(id + 1);
@@ -672,14 +674,31 @@ export default function App() {
       </header>
 
       <div className="document-bar">
-        <div className="tabs" role="tablist">
+        <div className="document-tabs">
+        <div className="tabs" role="tablist" aria-label="Documents">
           {documents.map((document) => (
-            <div className={`document-tab ${active.id === document.id ? "active" : ""}`} key={document.id} role="tab" aria-selected={active.id === document.id} onClick={() => setActiveId(document.id)}>
-              <FileImage size={14} /><span>{document.name}</span><button aria-label={`Close ${document.name}`} onClick={(event) => { event.stopPropagation(); closeTab(document.id); }}><X size={13} /></button>
-            </div>
+            <button type="button" className={`document-tab ${active.id === document.id ? "active" : ""}`} key={document.id} id={`tab-${document.id}`} role="tab" aria-controls="workspace-panel" aria-selected={active.id === document.id} tabIndex={active.id === document.id ? 0 : -1} onClick={() => setActiveId(document.id)} onKeyDown={(event) => {
+              const tabs = Array.from(event.currentTarget.closest('[role="tablist"]')?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+              let next = -1;
+              if (event.key === "ArrowRight") next = (documents.findIndex((item) => item.id === document.id) + 1) % tabs.length;
+              else if (event.key === "ArrowLeft") next = (documents.findIndex((item) => item.id === document.id) - 1 + tabs.length) % tabs.length;
+              else if (event.key === "Home") next = 0;
+              else if (event.key === "End") next = tabs.length - 1;
+              if (next >= 0 && tabs[next]) {
+                event.preventDefault();
+                tabs[next].focus();
+                setActiveId(documents[next].id);
+              }
+            }}>
+              <FileImage size={14} /><span>{document.name}</span>
+            </button>
           ))}
+        </div>
+        <div className="tab-actions">
+          <button className="icon-button add-tab" aria-label={`Close ${active.name}`} title={`Close ${active.name}`} onClick={() => closeTab(active.id)}><X size={14} /></button>
           <button className="icon-button add-tab" aria-label="New tab" title="New tab" onClick={addTab}><Plus size={15} /></button>
           <button className="icon-button add-tab" aria-label="Duplicate tab" title="Duplicate tab" onClick={duplicateTab}><Copy size={14} /></button>
+        </div>
         </div>
         <div className="document-tools">
           <label className="preset-picker"><span>Preset</span><select value={active.preset} onChange={(event) => void choosePreset(event.target.value)}><option value="Custom">Custom</option>{presets.map((preset) => <option key={preset}>{preset}</option>)}</select><ChevronDown size={13} /></label>
@@ -695,7 +714,7 @@ export default function App() {
         </div>
       </div>
 
-      <section className="workspace">
+      <section className="workspace" id="workspace-panel" role="tabpanel" aria-labelledby={`tab-${active.id}`} tabIndex={0}>
         <nav className="tool-rail" aria-label="Canvas tools">
           <button className="rail-button selected" title="Move canvas"><span className="move-icon">✥</span></button>
           <button className="rail-button" title="Image information" onClick={() => patchDocument(active.id, { status: `${active.width} × ${active.height} px` })}><ImagePlus size={17} /></button>
